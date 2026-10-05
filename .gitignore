@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data: rebuilt with `python -m app fetch`. data/manual/ (hand-verified corrections) is tracked.
+data/*.sqlite3
+data/*.sqlite3-wal
+data/*.sqlite3-shm
+data/cache/
+data/import/

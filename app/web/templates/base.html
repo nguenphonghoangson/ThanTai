@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Vietlott Analyzer{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <h1>Vietlott Analyzer</h1>
+      <p class="tagline">Historical draw analysis and statistically weighted candidate generation</p>
+    </div>
+  </header>
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="wrap footer">
+    Lottery draws are independent random events. Scores here describe past data only;
+    they are not probabilities and do not predict future results.
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

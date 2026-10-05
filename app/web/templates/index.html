@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card controls">
+  <form id="controls" onsubmit="return false">
+    <label>Game
+      <select name="game" id="game">
+        {% for g in games %}
+        <option value="{{ g.key }}">{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>From
+      <input type="date" name="from" id="from" value="{{ default_start }}">
+    </label>
+    <label>To
+      <input type="date" name="to" id="to" value="{{ default_end }}">
+    </label>
+    <label title="Window (in draws) for the headline Recent column and hot/cold labels">Analysis window
+      <input type="number" name="window" id="window" value="100" min="10" max="2000" step="10">
+    </label>
+    <label>Scoring strategy
+      <select name="strategy" id="strategy">
+        {% for key, label in strategies %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Combinations
+      <input type="number" name="count" id="count" value="100" min="1" max="1000">
+    </label>
+    <label title="Same seed + same settings + same data = same combinations">Seed
+      <input type="number" id="seed" min="0" placeholder="random">
+    </label>
+    <fieldset class="weights" id="weights">
+      <legend>Scoring weights <span class="muted inline" id="weights-note">relative; rescaled to sum to 1</span></legend>
+      {% for key, label in weight_fields %}
+      <label>{{ label }}
+        <input type="number" data-weight="{{ key }}" min="0" max="10" step="0.05">
+      </label>
+      {% endfor %}
+      <label title="score = 1 + intensity × Σ weight × z">Intensity
+        <input type="number" id="intensity" min="0" max="5" step="0.05">
+      </label>
+      <label title="Both are hypotheses to backtest; neither is assumed to work">Gap mode
+        <select id="gap-mode">
+          <option value="overdue">Overdue (long gap ↑)</option>
+          <option value="recency">Recency (short gap ↑)</option>
+        </select>
+      </label>
+    </fieldset>
+    <fieldset class="weights" id="rules">
+      <legend>Combination filters <span class="muted inline">penalties lower a combination's score; they are not claims a draw cannot look like this</span></legend>
+      <label class="check"><input type="checkbox" id="rule-odd" checked> All odd / all even</label>
+      <label class="check"><input type="checkbox" id="rule-low" checked> All low / all high</label>
+      <label title="Penalize when max − min is below this share of the number range">Min spread %
+        <input type="number" id="rule-spread" value="30" min="0" max="100" step="5">
+      </label>
+      <label title="Penalize sums outside these historical percentiles">Sum from P
+        <input type="number" id="rule-sum-lo" value="5" min="0" max="99">
+      </label>
+      <label>Sum to P
+        <input type="number" id="rule-sum-hi" value="95" min="1" max="100">
+      </label>
+      <label title="Sample N× the requested count and keep the best by combination score. 1 = no selection. Ignored for the random baseline.">Oversample ×
+        <input type="number" id="rule-oversample" value="1" min="1" max="20">
+      </label>
+    </fieldset>
+    <label class="check"><input type="checkbox" id="pairs" checked> Pair analysis</label>
+    <label class="check"><input type="checkbox" id="triples"> Triple analysis</label>
+    <label class="check"><input type="checkbox" id="force"> Force re-download</label>
+    <div class="actions">
+      <button type="button" id="btn-fetch">Fetch data</button>
+      <button type="button" id="btn-analyze">Analyze</button>
+      <button type="button" id="btn-generate">Generate</button>
+    </div>
+    <p class="status" id="fetch-status" role="status"></p>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Stored data</h2>
+  <dl class="stats" id="data-summary">
+    <div><dt>Game</dt><dd data-field="game">—</dd></div>
+    <div><dt>Draws stored</dt><dd data-field="total_draws">—</dd></div>
+    <div><dt>First draw</dt><dd data-field="first_date">—</dd></div>
+    <div><dt>Last draw</dt><dd data-field="last_date">—</dd></div>
+  </dl>
+  <p class="muted" id="game-info"></p>
+  <ul class="quality" id="data-quality" hidden></ul>
+</section>
+
+<section class="card" id="stats-section" hidden>
+  <h2>Statistics <span class="muted inline" id="stats-scope"></span></h2>
+  <dl class="stats" id="stats-summary"></dl>
+
+  <div class="chart-card">
+    <div class="chart-head">
+      <h3 id="number-chart-title">Number frequency</h3>
+      <div class="segmented" id="number-metric" role="group" aria-label="Per-number metric">
+        <button type="button" data-metric="frequency" aria-pressed="true">Frequency</button>
+        <button type="button" data-metric="recent" aria-pressed="false">Recent</button>
+        <button type="button" data-metric="gap" aria-pressed="false">Gap</button>
+      </div>
+    </div>
+    <p class="muted" id="number-chart-note"></p>
+    <div class="chart" id="number-chart"></div>
+  </div>
+  <div class="charts-grid">
+    <div class="chart-card"><h3>Sum distribution</h3><p class="muted" id="sum-chart-note"></p><div class="chart" id="sum-chart"></div></div>
+    <div class="chart-card"><h3>Odd / even per draw</h3><p class="muted">Share of draws by number of odd numbers, vs uniform random draws.</p><div class="chart" id="odd-chart"></div></div>
+    <div class="chart-card"><h3>Low / high per draw</h3><p class="muted">Share of draws by number of low numbers, vs uniform random draws.</p><div class="chart" id="low-chart"></div></div>
+  </div>
+
+  <h3>Numbers</h3>
+  <p class="muted">Click a column to sort. Gap = draws since last appearance; Avg gap = mean draws missed
+    between appearances (expected <span id="expected-gap"></span> for uniform draws). Gap/Avg and hot/cold
+    labels describe the past only — a long gap does not make a number more likely.</p>
+  <div class="table-wrap">
+    <table class="data sortable" id="numbers-table">
+      <thead><tr>
+        <th data-sort="number">No</th>
+        <th data-sort="frequency">Freq</th>
+        <th data-sort="frequency_rate">Rate</th>
+        <th data-sort="recent_10">R10</th>
+        <th data-sort="recent_20">R20</th>
+        <th data-sort="recent_50">R50</th>
+        <th data-sort="recent_w" id="recent-w-head">Recent</th>
+        <th data-sort="gap">Gap</th>
+        <th data-sort="average_gap">Avg gap</th>
+        <th data-sort="gap_deviation">Gap/Avg</th>
+        <th data-sort="temperature_ratio">Hot/cold</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="grid two">
+    <div><h3>Odd / even per draw</h3><table class="data" id="odd-even-table"></table></div>
+    <div><h3>Low / high per draw</h3><table class="data" id="low-high-table"></table><p class="muted" id="low-high-ranges"></p></div>
+    <div><h3>Sum of numbers</h3><table class="data" id="sum-table"></table></div>
+    <div id="pairs-block"><h3>Most frequent pairs</h3><p class="muted" id="pairs-note"></p><table class="data" id="pairs-table"></table></div>
+    <div id="triples-block" hidden><h3>Most frequent triples</h3><p class="muted" id="triples-note"></p><table class="data" id="triples-table"></table></div>
+  </div>
+</section>
+
+<section class="card" id="scores-section" hidden>
+  <h2>Number scores <span class="muted inline" id="scores-scope"></span></h2>
+  <p class="muted">Score is a relative sampling weight: 1.00 is neutral, above 1 means the strategy favours
+    the number. It is not a probability; the backtest decides whether any strategy beats random.
+    Click a row for its breakdown.</p>
+  <div class="chart" id="score-chart"></div>
+  <div class="scores-layout">
+    <div class="table-wrap">
+      <table class="data sortable" id="scores-table">
+        <thead><tr>
+          <th data-sort="number">No</th>
+          <th data-sort="frequency">Frequency</th>
+          <th data-sort="recent" id="scores-recent-head">Recent</th>
+          <th data-sort="gap">Gap</th>
+          <th data-sort="score">Score</th>
+          <th data-sort="rank">Rank</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <aside class="breakdown" id="breakdown">
+      <p class="muted">Select a number to see why it scores the way it does.</p>
+    </aside>
+  </div>
+  <ul class="notes muted" id="scores-notes"></ul>
+  <details class="params"><summary>Reproducibility parameters</summary><pre id="scores-params"></pre></details>
+</section>
+
+<section class="card" id="combos-section" hidden>
+  <h2>Generated combinations</h2>
+  <dl class="stats" id="combos-meta"></dl>
+  <div class="actions combo-actions">
+    <button type="button" id="btn-again">Generate again (new seed)</button>
+    <label class="inline-field">Seed <input type="number" id="seed-change" min="0"></label>
+    <button type="button" id="btn-seed">Use this seed</button>
+    <a class="button" id="btn-csv" href="#" download>Export CSV</a>
+    <button type="button" class="secondary" id="btn-reproduce">Verify reproducible</button>
+  </div>
+  <p class="status" id="combos-status" role="status"></p>
+  <div class="table-wrap">
+    <table class="data" id="combos-table">
+      <thead><tr>
+        <th>#</th><th>Numbers</th><th title="Sum of number scores">Numbers</th><th>Pair</th>
+        <th title="Odd/even, low/high and spread penalties">Distribution</th><th>Sum</th><th>Score</th><th>Flags</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <ul class="notes muted" id="combos-notes"></ul>
+  <h3>Recent sessions</h3>
+  <div class="table-wrap short">
+    <table class="data" id="sessions-table">
+      <thead><tr><th>ID</th><th>Created (UTC)</th><th>Strategy</th><th>Seed</th><th>Count</th><th>Range</th><th>Dataset</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card" id="backtest-section">
+  <h2>Backtest</h2>
+  <p class="muted">Walk-forward: for each draw in the period, only earlier draws are used to score numbers and
+    generate combinations, which are then compared with that draw's actual numbers. Every strategy is compared with
+    the uniform random baseline on the same draws and the same random numbers. Uses the game, analysis window,
+    filters and (for "Custom") the weights set above.</p>
+  <form class="bt-form" onsubmit="return false">
+    <label>Period from <input type="date" id="bt-from" value="2022-01-01"></label>
+    <label>Period to <input type="date" id="bt-to" value="{{ default_end }}"></label>
+    <label title="Leave empty to use every stored draw before each target">History from
+      <input type="date" id="bt-train-from"></label>
+    <label>Combinations / draw <input type="number" id="bt-per-draw" value="100" min="1" max="1000"></label>
+    <label title="Targets with fewer prior draws are skipped">Min history <input type="number" id="bt-min-history" value="100" min="10" max="5000"></label>
+    <label title="Evaluate every N-th draw">Step <input type="number" id="bt-step" value="1" min="1" max="100"></label>
+    <label>Base seed <input type="number" id="bt-seed" value="20240101" min="0"></label>
+    <fieldset class="bt-strategies">
+      <legend>Strategies <span class="muted inline">random baseline always included</span></legend>
+      <label class="check"><input type="checkbox" data-bt-strategy="frequency" checked> Frequency</label>
+      <label class="check"><input type="checkbox" data-bt-strategy="recent" checked> Recent</label>
+      <label class="check"><input type="checkbox" data-bt-strategy="balanced" checked> Balanced</label>
+      <label class="check"><input type="checkbox" id="bt-custom"> Custom (weights above)</label>
+    </fieldset>
+    <div class="actions"><button type="button" id="btn-backtest">Run backtest</button></div>
+  </form>
+  <div class="progress" id="bt-progress" hidden><div class="progress-bar" id="bt-progress-bar"></div></div>
+  <p class="status" id="bt-status" role="status"></p>
+
+  <div id="bt-result" hidden>
+    <dl class="stats" id="bt-meta"></dl>
+    <p class="verdict" id="bt-headline"></p>
+    <h3>Cumulative difference from random</h3>
+    <p class="muted">Running average of (strategy − random) matches per combination, draw by draw. A real edge would
+      drift away from 0 and stay there; noise wanders and shrinks toward 0 as draws accumulate.
+      <span id="bt-chart-note"></span></p>
+    <div class="chart" id="bt-chart"></div>
+    <h3>Match distribution per combination</h3>
+    <div class="table-wrap"><table class="data" id="bt-table"></table></div>
+    <h3>Compared with the random baseline</h3>
+    <p class="muted">Δ = difference in average matches per combination (strategy − random), paired by draw.
+      p(adj) applies a Bonferroni correction for testing several strategies.</p>
+    <div class="table-wrap"><table class="data" id="bt-compare"></table></div>
+    <ul class="notes muted" id="bt-notes"></ul>
+    <div class="actions"><a class="button" id="bt-csv" href="#" download>Export per-draw CSV</a></div>
+  </div>
+
+  <h3>Recent backtests</h3>
+  <div class="table-wrap short">
+    <table class="data" id="bt-runs">
+      <thead><tr><th>ID</th><th>Created (UTC)</th><th>Status</th><th>Period</th><th>Strategies</th><th>Per draw</th><th>Seed</th><th>Draws</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{# Plain scripts sharing one global scope, loaded in dependency order; main.js wires events. #}
+{% for name in ["charts.js", "core.js", "analysis.js", "dashboard-charts.js", "scoring.js", "generation.js", "backtest.js", "main.js"] %}
+<script src="{{ url_for('static', path=name) }}"></script>
+{% endfor %}
+{% endblock %}
