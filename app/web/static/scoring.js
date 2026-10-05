@@ -1,31 +1,31 @@
 "use strict";
-// Number scores: weight editor, score table, breakdown.
+// Phân hệ Điểm số Thuật toán: chỉnh sửa trọng số, bảng xếp hạng điểm, bóc tách thành phần đóng góp.
 let presets = {};
-let scoring = null; // last /api/analysis/scores response
+let scoring = null; // lưu kết quả /api/analysis/scores gần nhất
 let scoreSort = { key: "rank", dir: 1 };
 let selectedNumber = null;
 
 const COMPONENT_LABELS = {
-  frequency: "Frequency",
-  recent_frequency: "Recent",
-  gap: "Gap",
-  pair: "Pair",
-  historical: "Historical",
+  frequency: "Tần suất toàn bộ",
+  recent_frequency: "Phong độ kỳ gần",
+  gap: "Nhịp vắng mặt (Gan)",
+  pair: "Đồng xuất hiện (Cặp số)",
+  historical: "Tính ổn định chu kỳ",
 };
 
 function describeRaw(name, raw, params) {
-  if (raw === null || raw === undefined) return "n/a";
+  if (raw === null || raw === undefined) return "Không có dữ liệu";
   switch (name) {
     case "frequency":
-      return `rate ×${fmt(raw)} of expected`;
+      return `Tỷ lệ về gấp ×${fmt(raw)} lần kỳ vọng lý thuyết`;
     case "recent_frequency":
-      return `×${fmt(raw)} expected in last ${params.feature_config.hot_cold_window}`;
+      return `Gấp ×${fmt(raw)} lần kỳ vọng trong ${params.feature_config.hot_cold_window} kỳ gần nhất`;
     case "gap":
-      return `gap ${fmt(raw)}× its average${raw > 3 ? ", capped at 3" : ""} (${params.scoring.gap_mode} hypothesis)`;
+      return `Vắng mặt gấp ${fmt(raw)}× chu kỳ trung bình (${params.scoring.gap_mode === "overdue" ? "giả thuyết bắt số gan" : "giả thuyết bắt số rơi"})`;
     case "pair":
-      return `×${fmt(raw)} co-occurrence with top numbers`;
+      return `Độ liên kết đồng xuất hiện ×${fmt(raw)} với các số hàng đầu`;
     case "historical":
-      return `above expected in ${Math.round(raw * 100)}% of ${params.feature_config.consistency_block}-draw blocks`;
+      return `Vượt kỳ vọng ở ${Math.round(raw * 100)}% các khối ${params.feature_config.consistency_block} kỳ quay`;
     default:
       return fmt(raw);
   }
@@ -37,24 +37,35 @@ async function loadStrategies() {
 }
 
 function applyPreset() {
-  const p = presets[$("#strategy").value];
+  const stratEl = $("#strategy");
+  if (!stratEl) return;
+  const p = presets[stratEl.value];
   if (!p) return;
-  for (const input of document.querySelectorAll("[data-weight]")) input.value = p.weights[input.dataset.weight];
-  $("#intensity").value = p.intensity;
-  $("#gap-mode").value = p.gap_mode;
-  $("#weights").disabled = p.uniform;
+  for (const input of document.querySelectorAll("[data-weight]")) {
+    input.value = p.weights[input.dataset.weight];
+  }
+  const intInput = $("#intensity");
+  if (intInput) intInput.value = p.intensity;
+  const gapInput = $("#gap-mode");
+  if (gapInput) gapInput.value = p.gap_mode;
+  const weightsEl = $("#weights");
+  if (weightsEl) weightsEl.disabled = p.uniform;
 }
 
 function scoringOverrides() {
-  const p = presets[$("#strategy").value];
+  const stratEl = $("#strategy");
+  if (!stratEl) return { weights: {} };
+  const p = presets[stratEl.value];
   const out = { weights: {} };
   if (!p || p.uniform) return out;
   for (const input of document.querySelectorAll("[data-weight]")) {
     const v = Number(input.value);
     if (v !== p.weights[input.dataset.weight]) out.weights[input.dataset.weight] = v;
   }
-  if (Number($("#intensity").value) !== p.intensity) out.intensity = Number($("#intensity").value);
-  if ($("#gap-mode").value !== p.gap_mode) out.gap_mode = $("#gap-mode").value;
+  const intVal = Number($("#intensity").value);
+  if (intVal !== p.intensity) out.intensity = intVal;
+  const gapVal = $("#gap-mode").value;
+  if (gapVal !== p.gap_mode) out.gap_mode = gapVal;
   return out;
 }
 
@@ -71,15 +82,20 @@ function scoringParams() {
 function renderScores() {
   const { key, dir } = scoreSort;
   const rows = [...scoring.scores].sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * dir || a.number - b.number);
-  $("#scores-table tbody").replaceChildren(
+  const tbody = $("#scores-table tbody");
+  if (!tbody) return;
+  tbody.replaceChildren(
     ...rows.map((s) => {
+      const ballColorIndex = Math.min(5, Math.floor(s.number / 10));
       const tr = el("tr", { className: s.number === selectedNumber ? "selected" : "" }, [
-        el("td", {}, pad2(s.number)),
+        el("td", { className: "col-num-cell" }, [
+          el("span", { className: `ball mini-ball ball-${ballColorIndex}` }, pad2(s.number)),
+        ]),
         el("td", {}, s.frequency),
         el("td", {}, s.recent),
-        el("td", {}, s.seen ? s.gap : `${s.gap}+`),
-        el("td", {}, fmt(s.score, 3)),
-        el("td", {}, s.rank),
+        el("td", { className: s.gap >= 15 ? "cell-warning" : "" }, s.seen ? s.gap : `${s.gap}+`),
+        el("td", { className: "cell-highlight cell-bold" }, fmt(s.score, 3)),
+        el("td", { className: "cell-rank" }, `#${s.rank}`),
       ]);
       tr.dataset.number = s.number;
       return tr;
@@ -92,53 +108,88 @@ function renderScores() {
 
 function renderBreakdown() {
   const box = $("#breakdown");
+  if (!box || !scoring) return;
   const s = scoring.scores.find((x) => x.number === selectedNumber);
   if (!s) {
-    box.replaceChildren(el("p", { className: "muted" }, "Select a number to see why it scores the way it does."));
+    box.replaceChildren(el("p", { className: "muted" }, "Chọn một số bất kỳ trong bảng để xem chi tiết lý do và thành phần điểm số."));
     return;
   }
   const signed = (v) => el("span", { className: v > 0 ? "pos" : v < 0 ? "neg" : "" }, `${v >= 0 ? "+" : ""}${fmt(v, 3)}`);
   const rows = s.components.map((c) =>
-    el("tr", { title: `z = ${fmt(c.z)}, weight ${fmt(c.weight)}` }, [
-      el("td", {}, [el("div", {}, COMPONENT_LABELS[c.name]), el("div", { className: "muted" }, describeRaw(c.name, c.raw, scoring.params))]),
-      el("td", {}, signed(c.contribution)),
+    el("tr", { title: `z-score = ${fmt(c.z)}, trọng số = ${fmt(c.weight)}` }, [
+      el("td", {}, [
+        el("div", { className: "cell-bold" }, COMPONENT_LABELS[c.name] || c.name),
+        el("div", { className: "muted text-xs" }, describeRaw(c.name, c.raw, scoring.params)),
+      ]),
+      el("td", { className: "cell-contrib" }, signed(c.contribution)),
     ]),
   );
   const total = s.components.reduce((a, c) => a + c.contribution, 0);
   const floored = Math.abs(1 + total - s.score) > 1e-9;
+  const ballColorIndex = Math.min(5, Math.floor(s.number / 10));
+
   box.replaceChildren(
-    el("h3", {}, `Number ${pad2(s.number)} · rank ${s.rank}`),
-    el("table", { className: "data" }, [
-      el("tbody", {}, [
-        el("tr", {}, [el("td", {}, "Neutral baseline"), el("td", {}, "1.000")]),
-        ...rows,
-        el("tr", { className: "total" }, [el("td", {}, floored ? "Final score (floored)" : "Final score"), el("td", {}, fmt(s.score, 3))]),
+    el("div", { className: "breakdown-header" }, [
+      el("span", { className: `ball ball-${ballColorIndex}` }, pad2(s.number)),
+      el("div", {}, [
+        el("h3", {}, `Bóng số ${pad2(s.number)}`),
+        el("span", { className: "badge badge-primary" }, `Xếp hạng #${s.rank}`),
       ]),
     ]),
-    el("p", { className: "muted" },
+    el("table", { className: "data modern-table breakdown-table" }, [
+      el("tbody", {}, [
+        el("tr", {}, [el("td", {}, "Mức chuẩn trung hòa (Neutral)"), el("td", {}, "1.000")]),
+        ...rows,
+        el("tr", { className: "total-row" }, [
+          el("td", { className: "cell-bold" }, floored ? "Điểm tổng hợp (đã chặn sàn 0.05)" : "Điểm tổng hợp cuối"),
+          el("td", { className: "cell-bold cell-highlight" }, fmt(s.score, 3)),
+        ]),
+      ]),
+    ]),
+    el("p", { className: "muted breakdown-footnote" },
       s.components.length
-        ? "Contribution = intensity × weight × z, where z is how far the number sits from the pool average on that component."
-        : "Random baseline: every number has the same score."),
+        ? "Mức đóng góp = Cường độ × Trọng số × z-score (độ lệch chuẩn so với giá trị trung bình toàn bộ dải số)."
+        : "Chiến lược ngẫu nhiên đối chứng: mọi số đều có điểm số 1.000 như nhau."),
   );
 }
 
 function renderScoring() {
   const g = gamesByKey[scoring.params.game];
-  const label = $("#strategy").selectedOptions[0].textContent + (scoring.customized ? " (custom)" : "");
-  $("#scores-scope").textContent = `${g.name} · ${label} · ${scoring.params.n_draws} draws`;
-  $("#scores-recent-head").textContent = `R${scoring.params.feature_config.hot_cold_window}`;
-  $("#scores-notes").replaceChildren(...scoring.notes.map((n) => el("li", {}, n)));
-  $("#scores-params").textContent = JSON.stringify(scoring.params, null, 2);
-  if (selectedNumber === null) selectedNumber = scoring.scores.find((s) => s.rank === 1).number;
+  const stratSelect = $("#strategy");
+  const label = (stratSelect?.selectedOptions[0]?.textContent || scoring.strategy) + (scoring.customized ? " (Tùy biến)" : "");
+  const scopeEl = $("#scores-scope");
+  if (scopeEl) {
+    scopeEl.textContent = `${g.name} · ${label} · ${scoring.params.n_draws} kỳ quay`;
+  }
+  const rwHead = $("#scores-recent-head");
+  if (rwHead) {
+    rwHead.textContent = `Về ${scoring.params.feature_config.hot_cold_window} kỳ`;
+  }
+  const notesEl = $("#scores-notes");
+  if (notesEl) {
+    notesEl.replaceChildren(...scoring.notes.map((n) => el("li", {}, n)));
+  }
+  const paramsEl = $("#scores-params");
+  if (paramsEl) {
+    paramsEl.textContent = JSON.stringify(scoring.params, null, 2);
+  }
+  if (selectedNumber === null) {
+    const topScorer = scoring.scores.find((s) => s.rank === 1);
+    selectedNumber = topScorer ? topScorer.number : scoring.scores[0].number;
+  }
   renderScoreChart();
   renderScores();
   renderBreakdown();
-  $("#scores-section").hidden = false;
+  const scoresSection = $("#scores-section");
+  if (scoresSection) scoresSection.hidden = false;
 }
 
 async function runScoring() {
   const params = scoringParams();
-  for (const k of ["game", "from", "to", "window"]) params.set(k, $(`#${k}`).value);
+  for (const k of ["game", "from", "to", "window"]) {
+    const elInput = $(`#${k}`);
+    if (elInput) params.set(k, elInput.value);
+  }
   scoring = await getJson(`/api/analysis/scores?${params}`);
   renderScoring();
 }
@@ -148,7 +199,7 @@ async function onRescore() {
   try {
     await runScoring();
   } catch (err) {
-    setStatus($("#fetch-status"), `Scoring failed: ${err.message}`, "error");
+    setStatus($("#fetch-status"), `Lỗi tính điểm thuật toán: ${err.message}`, "error");
   }
 }
 
@@ -162,7 +213,7 @@ function onScoresTableClick(event) {
     return;
   }
   const tr = event.target.closest("tbody tr");
-  if (tr) {
+  if (tr && tr.dataset.number) {
     selectedNumber = Number(tr.dataset.number);
     renderScores();
     renderBreakdown();

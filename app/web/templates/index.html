@@ -1,264 +1,1037 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="card controls">
-  <form id="controls" onsubmit="return false">
-    <label>Game
-      <select name="game" id="game">
-        {% for g in games %}
-        <option value="{{ g.key }}">{{ g.name }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>From
-      <input type="date" name="from" id="from" value="{{ default_start }}">
-    </label>
-    <label>To
-      <input type="date" name="to" id="to" value="{{ default_end }}">
-    </label>
-    <label title="Window (in draws) for the headline Recent column and hot/cold labels">Analysis window
-      <input type="number" name="window" id="window" value="100" min="10" max="2000" step="10">
-    </label>
-    <label>Scoring strategy
-      <select name="strategy" id="strategy">
-        {% for key, label in strategies %}
-        <option value="{{ key }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Combinations
-      <input type="number" name="count" id="count" value="100" min="1" max="1000">
-    </label>
-    <label title="Same seed + same settings + same data = same combinations">Seed
-      <input type="number" id="seed" min="0" placeholder="random">
-    </label>
-    <fieldset class="weights" id="weights">
-      <legend>Scoring weights <span class="muted inline" id="weights-note">relative; rescaled to sum to 1</span></legend>
-      {% for key, label in weight_fields %}
-      <label>{{ label }}
-        <input type="number" data-weight="{{ key }}" min="0" max="10" step="0.05">
-      </label>
-      {% endfor %}
-      <label title="score = 1 + intensity × Σ weight × z">Intensity
-        <input type="number" id="intensity" min="0" max="5" step="0.05">
-      </label>
-      <label title="Both are hypotheses to backtest; neither is assumed to work">Gap mode
-        <select id="gap-mode">
-          <option value="overdue">Overdue (long gap ↑)</option>
-          <option value="recency">Recency (short gap ↑)</option>
-        </select>
-      </label>
-    </fieldset>
-    <fieldset class="weights" id="rules">
-      <legend>Combination filters <span class="muted inline">penalties lower a combination's score; they are not claims a draw cannot look like this</span></legend>
-      <label class="check"><input type="checkbox" id="rule-odd" checked> All odd / all even</label>
-      <label class="check"><input type="checkbox" id="rule-low" checked> All low / all high</label>
-      <label title="Penalize when max − min is below this share of the number range">Min spread %
-        <input type="number" id="rule-spread" value="30" min="0" max="100" step="5">
-      </label>
-      <label title="Penalize sums outside these historical percentiles">Sum from P
-        <input type="number" id="rule-sum-lo" value="5" min="0" max="99">
-      </label>
-      <label>Sum to P
-        <input type="number" id="rule-sum-hi" value="95" min="1" max="100">
-      </label>
-      <label title="Sample N× the requested count and keep the best by combination score. 1 = no selection. Ignored for the random baseline.">Oversample ×
-        <input type="number" id="rule-oversample" value="1" min="1" max="20">
-      </label>
-    </fieldset>
-    <label class="check"><input type="checkbox" id="pairs" checked> Pair analysis</label>
-    <label class="check"><input type="checkbox" id="triples"> Triple analysis</label>
-    <label class="check"><input type="checkbox" id="force"> Force re-download</label>
-    <div class="actions">
-      <button type="button" id="btn-fetch">Fetch data</button>
-      <button type="button" id="btn-analyze">Analyze</button>
-      <button type="button" id="btn-generate">Generate</button>
-    </div>
-    <p class="status" id="fetch-status" role="status"></p>
-  </form>
-</section>
+<div class="space-y-6">
 
-<section class="card">
-  <h2>Stored data</h2>
-  <dl class="stats" id="data-summary">
-    <div><dt>Game</dt><dd data-field="game">—</dd></div>
-    <div><dt>Draws stored</dt><dd data-field="total_draws">—</dd></div>
-    <div><dt>First draw</dt><dd data-field="first_date">—</dd></div>
-    <div><dt>Last draw</dt><dd data-field="last_date">—</dd></div>
-  </dl>
-  <p class="muted" id="game-info"></p>
-  <ul class="quality" id="data-quality" hidden></ul>
-</section>
+  <!-- ================================================================= -->
+  <!-- KHUNG ĐIỀU KHIỂN & BỘ LỌC TOÀN CỤC (GLOBAL CONTROL BAR)          -->
+  <!-- ================================================================= -->
+  <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm transition-colors duration-150">
+    <form id="controls" onsubmit="return false" class="space-y-3.5">
+      
+      <!-- Hàng 1: Bộ chọn Game & 2 Nút Hành động Chủ lực -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        
+        <!-- Bộ chọn Game dạng Pill Segmented Switch nổi bật -->
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden md:inline">Loại vé:</span>
+          <!-- Select ẩn để phục vụ API và JS code -->
+          <select name="game" id="game" class="hidden">
+            {% for g in games %}
+            <option value="{{ g.key }}">{{ g.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="inline-flex p-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl w-full sm:w-auto" id="game-pill-group">
+            <button type="button" class="game-pill-btn active flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer" data-game="mega645">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+              <span>Mega 6/45</span>
+            </button>
+            <button type="button" class="game-pill-btn flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer" data-game="power655">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>Power 6/55</span>
+            </button>
+          </div>
+        </div>
 
-<section class="card" id="stats-section" hidden>
-  <h2>Statistics <span class="muted inline" id="stats-scope"></span></h2>
-  <dl class="stats" id="stats-summary"></dl>
+        <!-- 2 Nút Hành động Chủ lực -->
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-fetch" class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition-all cursor-pointer active:scale-95" title="Đồng bộ kỳ mở thưởng mới nhất từ nguồn dữ liệu">
+            <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-500"></i>
+            <span>Đồng bộ</span>
+          </button>
+          <button type="button" id="btn-analyze" class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-md shadow-red-500/25 ring-1 ring-red-400/30 transition-all cursor-pointer active:scale-95" title="Tính toán ma trận thống kê, chu kỳ nhịp và quy luật">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>Phân tích</span>
+          </button>
+        </div>
 
-  <div class="chart-card">
-    <div class="chart-head">
-      <h3 id="number-chart-title">Number frequency</h3>
-      <div class="segmented" id="number-metric" role="group" aria-label="Per-number metric">
-        <button type="button" data-metric="frequency" aria-pressed="true">Frequency</button>
-        <button type="button" data-metric="recent" aria-pressed="false">Recent</button>
-        <button type="button" data-metric="gap" aria-pressed="false">Gap</button>
+      </div>
+
+      <!-- Hàng 2: Bộ chọn khoảng thời gian, cửa sổ W & Quick Presets (Responsive) -->
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+          <div class="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5">
+            <i data-lucide="calendar" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+            <span class="text-xs text-slate-500 font-medium">Từ:</span>
+            <input type="date" name="from" id="from" value="{{ default_start }}" class="bg-transparent border-0 text-xs font-semibold text-slate-900 dark:text-white p-0 focus:ring-0 outline-none w-28">
+          </div>
+
+          <div class="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5">
+            <i data-lucide="calendar-check" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+            <span class="text-xs text-slate-500 font-medium">Đến:</span>
+            <input type="date" name="to" id="to" value="{{ default_end }}" class="bg-transparent border-0 text-xs font-semibold text-slate-900 dark:text-white p-0 focus:ring-0 outline-none w-28">
+          </div>
+
+          <div class="col-span-2 sm:col-span-1 flex items-center justify-between sm:justify-start gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5" title="Số kỳ gần nhất để đánh giá phong độ Nóng/Lạnh">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="sliders" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+              <span class="text-xs text-slate-500 font-medium">Kỳ gần (W):</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <input type="number" name="window" id="window" value="100" min="10" max="2000" step="10" class="w-14 bg-transparent border-0 text-xs font-bold text-slate-900 dark:text-white p-0 text-center focus:ring-0 outline-none">
+              <span class="text-[11px] text-slate-400 font-medium">kỳ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preset chọn nhanh ngày (Hiển thị mượt mà trên mọi màn hình) -->
+        <div class="flex items-center gap-1.5 self-start md:self-auto" id="date-presets">
+          <span class="text-[11px] font-semibold text-slate-400 mr-1 hidden sm:inline">Mốc nhanh:</span>
+          <button type="button" class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" data-preset="1y">1 năm</button>
+          <button type="button" class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" data-preset="3y">3 năm</button>
+          <button type="button" class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" data-preset="all">Tất cả</button>
+        </div>
+      </div>
+
+      <!-- Hàng 3: Tùy chọn phân tích & Thông báo trạng thái -->
+      <div class="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-slate-400 font-medium">Tùy chọn:</span>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer hover:border-blue-400 transition-colors">
+            <input type="checkbox" id="pairs" checked class="w-3.5 h-3.5 rounded text-blue-600">
+            <span>Cặp số đồng quy</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer hover:border-blue-400 transition-colors">
+            <input type="checkbox" id="triples" class="w-3.5 h-3.5 rounded text-blue-600">
+            <span>Bộ ba cùng về</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer hover:border-blue-400 transition-colors">
+            <input type="checkbox" id="force" class="w-3.5 h-3.5 rounded text-blue-600">
+            <span>Tải lại từ đầu</span>
+          </label>
+        </div>
+
+        <!-- Trạng thái hệ thống -->
+        <p class="status text-xs font-semibold text-slate-600 dark:text-slate-400 m-0" id="fetch-status" role="status"></p>
+      </div>
+
+    </form>
+  </section>
+
+  <!-- ================================================================= -->
+  <!-- HỆ THỐNG TAB ĐIỀU HƯỚNG CHÍNH (MAIN NAVIGATION TABS)             -->
+  <!-- ================================================================= -->
+  <nav class="nav-tabs p-1.5 bg-slate-200/80 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl flex overflow-x-auto gap-1.5 shadow-sm no-scrollbar sm:grid sm:grid-cols-4" role="tablist" aria-label="Phân hệ chức năng">
+    <button type="button" class="tab-btn active flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap" role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-target="panel-overview">
+      <i data-lucide="trophy" class="w-4 h-4 flex-shrink-0 text-amber-500"></i>
+      <span>Tổng quan & Kết quả</span>
+    </button>
+    <button type="button" class="tab-btn flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap" role="tab" aria-selected="false" aria-controls="panel-analysis" id="tab-analysis" data-target="panel-analysis">
+      <i data-lucide="bar-chart-2" class="w-4 h-4 flex-shrink-0 text-blue-500"></i>
+      <span>Khám phá Thống kê</span>
+    </button>
+    <button type="button" class="tab-btn flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap" role="tab" aria-selected="false" aria-controls="panel-generation" id="tab-generation" data-target="panel-generation">
+      <i data-lucide="dices" class="w-4 h-4 flex-shrink-0 text-purple-500"></i>
+      <span>Sinh số Dự thưởng</span>
+    </button>
+    <button type="button" class="tab-btn flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap" role="tab" aria-selected="false" aria-controls="panel-backtest" id="tab-backtest" data-target="panel-backtest">
+      <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0 text-rose-500"></i>
+      <span>Kiểm định Backtest</span>
+    </button>
+  </nav>
+
+  <!-- ================================================================= -->
+  <!-- TAB 1: TỔNG QUAN & KẾT QUẢ MỚI NHẤT (HERO DASHBOARD)             -->
+  <!-- ================================================================= -->
+  <div class="tab-panel active space-y-6" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    
+    <!-- BANNER HERO: KỲ MỞ THƯỞNG MỚI NHẤT VỚI BÓNG 3D HOÀNH TRÁNG -->
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 border border-red-500/40 p-6 sm:p-8 text-white shadow-xl shadow-red-600/15" id="hero-latest-draw">
+      <!-- Ánh sáng mờ nền ambient -->
+      <div class="absolute -right-16 -top-16 w-80 h-80 bg-white/15 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -left-16 -bottom-16 w-80 h-80 bg-black/20 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative z-10 flex flex-col gap-5">
+        
+        <!-- Header Hero: Tiêu đề kỳ quay, ngày mở thưởng, huy hiệu -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/20">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white border border-white/30 shadow-sm" id="hero-draw-title">
+              <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+              <span>Đang kết nối kỳ mở thưởng mới nhất...</span>
+            </span>
+            <span class="text-xs text-rose-100 font-medium" id="hero-draw-date">—</span>
+          </div>
+
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/15 text-white border border-white/30 backdrop-blur-sm">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+            <span>Kết quả Chính thức Vietlott</span>
+          </span>
+        </div>
+
+        <!-- Thân Hero: Dãy 6 bóng 3D bóng bẩy và bóng Bonus -->
+        <div>
+          <span class="text-[11px] font-bold text-rose-100 uppercase tracking-wider block mb-3">Dãy bóng may mắn đã về:</span>
+          <div class="balls flex items-center gap-3 sm:gap-4 flex-wrap" id="hero-draw-balls">
+            <div class="flex items-center gap-2 text-rose-100 text-xs py-3 font-medium">
+              <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-white"></i>
+              <span>Đang tải bóng số trúng thưởng...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chân Hero: Các chỉ số nhanh của kỳ này -->
+        <div class="flex flex-wrap items-center gap-2.5 pt-3 border-t border-white/20 text-xs">
+          <span class="text-rose-100 font-medium">Đặc trưng kỳ này:</span>
+          <span id="hero-draw-sum" class="px-3 py-1.5 rounded-xl bg-white/20 text-white font-bold font-mono">Tổng điểm: —</span>
+          <span id="hero-draw-oddeven" class="px-3 py-1.5 rounded-xl bg-white/20 text-white font-semibold">Chẵn/Lẻ: —</span>
+          <span id="hero-draw-lowhigh" class="px-3 py-1.5 rounded-xl bg-white/20 text-white font-semibold">Thấp/Cao: —</span>
+        </div>
+
       </div>
     </div>
-    <p class="muted" id="number-chart-note"></p>
-    <div class="chart" id="number-chart"></div>
-  </div>
-  <div class="charts-grid">
-    <div class="chart-card"><h3>Sum distribution</h3><p class="muted" id="sum-chart-note"></p><div class="chart" id="sum-chart"></div></div>
-    <div class="chart-card"><h3>Odd / even per draw</h3><p class="muted">Share of draws by number of odd numbers, vs uniform random draws.</p><div class="chart" id="odd-chart"></div></div>
-    <div class="chart-card"><h3>Low / high per draw</h3><p class="muted">Share of draws by number of low numbers, vs uniform random draws.</p><div class="chart" id="low-chart"></div></div>
-  </div>
 
-  <h3>Numbers</h3>
-  <p class="muted">Click a column to sort. Gap = draws since last appearance; Avg gap = mean draws missed
-    between appearances (expected <span id="expected-gap"></span> for uniform draws). Gap/Avg and hot/cold
-    labels describe the past only — a long gap does not make a number more likely.</p>
-  <div class="table-wrap">
-    <table class="data sortable" id="numbers-table">
-      <thead><tr>
-        <th data-sort="number">No</th>
-        <th data-sort="frequency">Freq</th>
-        <th data-sort="frequency_rate">Rate</th>
-        <th data-sort="recent_10">R10</th>
-        <th data-sort="recent_20">R20</th>
-        <th data-sort="recent_50">R50</th>
-        <th data-sort="recent_w" id="recent-w-head">Recent</th>
-        <th data-sort="gap">Gap</th>
-        <th data-sort="average_gap">Avg gap</th>
-        <th data-sort="gap_deviation">Gap/Avg</th>
-        <th data-sort="temperature_ratio">Hot/cold</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+    <!-- LƯỚI 3 THẺ ĐIỀU HƯỚNG TÁC VỤ NHANH (QUICK-LAUNCH SHORTCUTS) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+      
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+        <div class="space-y-2">
+          <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+            <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">Khám phá Thống kê & Nhịp Gan</h3>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Xem tần suất toàn bộ, phong độ kỳ gần, chu kỳ vắng mặt (Lô gan), và phân bố tổng điểm.
+          </p>
+        </div>
+        <button type="button" class="mt-4 inline-flex items-center justify-between w-full px-3.5 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 transition-colors cursor-pointer" onclick="switchTab('panel-analysis')">
+          <span>Xem ma trận thống kê</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
 
-  <div class="grid two">
-    <div><h3>Odd / even per draw</h3><table class="data" id="odd-even-table"></table></div>
-    <div><h3>Low / high per draw</h3><table class="data" id="low-high-table"></table><p class="muted" id="low-high-ranges"></p></div>
-    <div><h3>Sum of numbers</h3><table class="data" id="sum-table"></table></div>
-    <div id="pairs-block"><h3>Most frequent pairs</h3><p class="muted" id="pairs-note"></p><table class="data" id="pairs-table"></table></div>
-    <div id="triples-block" hidden><h3>Most frequent triples</h3><p class="muted" id="triples-note"></p><table class="data" id="triples-table"></table></div>
-  </div>
-</section>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+        <div class="space-y-2">
+          <div class="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/50 flex items-center justify-center text-purple-600 dark:text-purple-400 group-hover:scale-105 transition-transform">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">Sinh Vé Dự Thưởng AI</h3>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Áp dụng thuật toán Gumbel Top-k, tùy biến trọng số đa biến và sàng lọc vi phạm quy luật tổ hợp.
+          </p>
+        </div>
+        <button type="button" class="mt-4 inline-flex items-center justify-between w-full px-3.5 py-2 rounded-xl text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 transition-colors cursor-pointer" onclick="switchTab('panel-generation')">
+          <span>Bắt đầu sinh vé ngay</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
 
-<section class="card" id="scores-section" hidden>
-  <h2>Number scores <span class="muted inline" id="scores-scope"></span></h2>
-  <p class="muted">Score is a relative sampling weight: 1.00 is neutral, above 1 means the strategy favours
-    the number. It is not a probability; the backtest decides whether any strategy beats random.
-    Click a row for its breakdown.</p>
-  <div class="chart" id="score-chart"></div>
-  <div class="scores-layout">
-    <div class="table-wrap">
-      <table class="data sortable" id="scores-table">
-        <thead><tr>
-          <th data-sort="number">No</th>
-          <th data-sort="frequency">Frequency</th>
-          <th data-sort="recent" id="scores-recent-head">Recent</th>
-          <th data-sort="gap">Gap</th>
-          <th data-sort="score">Score</th>
-          <th data-sort="rank">Rank</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+        <div class="space-y-2">
+          <div class="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/50 flex items-center justify-center text-rose-600 dark:text-rose-400 group-hover:scale-105 transition-transform">
+            <i data-lucide="flask-conical" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">Kiểm Định Walk-Forward</h3>
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Thử nghiệm mù qua hàng nghìn kỳ quay lịch sử để kiểm tra chiến lược có vượt trội hơn ngẫu nhiên.
+          </p>
+        </div>
+        <button type="button" class="mt-4 inline-flex items-center justify-between w-full px-3.5 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 transition-colors cursor-pointer" onclick="switchTab('panel-backtest')">
+          <span>Chạy thử nghiệm mô hình</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+
     </div>
-    <aside class="breakdown" id="breakdown">
-      <p class="muted">Select a number to see why it scores the way it does.</p>
-    </aside>
-  </div>
-  <ul class="notes muted" id="scores-notes"></ul>
-  <details class="params"><summary>Reproducibility parameters</summary><pre id="scores-params"></pre></details>
-</section>
 
-<section class="card" id="combos-section" hidden>
-  <h2>Generated combinations</h2>
-  <dl class="stats" id="combos-meta"></dl>
-  <div class="actions combo-actions">
-    <button type="button" id="btn-again">Generate again (new seed)</button>
-    <label class="inline-field">Seed <input type="number" id="seed-change" min="0"></label>
-    <button type="button" id="btn-seed">Use this seed</button>
-    <a class="button" id="btn-csv" href="#" download>Export CSV</a>
-    <button type="button" class="secondary" id="btn-reproduce">Verify reproducible</button>
-  </div>
-  <p class="status" id="combos-status" role="status"></p>
-  <div class="table-wrap">
-    <table class="data" id="combos-table">
-      <thead><tr>
-        <th>#</th><th>Numbers</th><th title="Sum of number scores">Numbers</th><th>Pair</th>
-        <th title="Odd/even, low/high and spread penalties">Distribution</th><th>Sum</th><th>Score</th><th>Flags</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-  <ul class="notes muted" id="combos-notes"></ul>
-  <h3>Recent sessions</h3>
-  <div class="table-wrap short">
-    <table class="data" id="sessions-table">
-      <thead><tr><th>ID</th><th>Created (UTC)</th><th>Strategy</th><th>Seed</th><th>Count</th><th>Range</th><th>Dataset</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</section>
+    <!-- BẢNG 10 KỲ QUAY GẦN NHẤT (RECENT 10 DRAWS) -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900/50 flex items-center justify-center text-red-600 dark:text-red-400">
+            <i data-lucide="history" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Lịch sử 10 Kỳ Mở Thưởng Gần Nhất</h3>
+            <p class="text-[11px] text-slate-500">Đối soát trực tiếp bộ số trúng thưởng cùng các đặc tính cấu thành</p>
+          </div>
+        </div>
+        <span class="text-xs font-semibold text-slate-400">Cập nhật lúc 18h30</span>
+      </div>
 
-<section class="card" id="backtest-section">
-  <h2>Backtest</h2>
-  <p class="muted">Walk-forward: for each draw in the period, only earlier draws are used to score numbers and
-    generate combinations, which are then compared with that draw's actual numbers. Every strategy is compared with
-    the uniform random baseline on the same draws and the same random numbers. Uses the game, analysis window,
-    filters and (for "Custom") the weights set above.</p>
-  <form class="bt-form" onsubmit="return false">
-    <label>Period from <input type="date" id="bt-from" value="2022-01-01"></label>
-    <label>Period to <input type="date" id="bt-to" value="{{ default_end }}"></label>
-    <label title="Leave empty to use every stored draw before each target">History from
-      <input type="date" id="bt-train-from"></label>
-    <label>Combinations / draw <input type="number" id="bt-per-draw" value="100" min="1" max="1000"></label>
-    <label title="Targets with fewer prior draws are skipped">Min history <input type="number" id="bt-min-history" value="100" min="10" max="5000"></label>
-    <label title="Evaluate every N-th draw">Step <input type="number" id="bt-step" value="1" min="1" max="100"></label>
-    <label>Base seed <input type="number" id="bt-seed" value="20240101" min="0"></label>
-    <fieldset class="bt-strategies">
-      <legend>Strategies <span class="muted inline">random baseline always included</span></legend>
-      <label class="check"><input type="checkbox" data-bt-strategy="frequency" checked> Frequency</label>
-      <label class="check"><input type="checkbox" data-bt-strategy="recent" checked> Recent</label>
-      <label class="check"><input type="checkbox" data-bt-strategy="balanced" checked> Balanced</label>
-      <label class="check"><input type="checkbox" id="bt-custom"> Custom (weights above)</label>
-    </fieldset>
-    <div class="actions"><button type="button" id="btn-backtest">Run backtest</button></div>
-  </form>
-  <div class="progress" id="bt-progress" hidden><div class="progress-bar" id="bt-progress-bar"></div></div>
-  <p class="status" id="bt-status" role="status"></p>
+      <div class="table-wrap">
+        <table class="modern-table" id="recent-draws-table">
+          <thead>
+            <tr>
+              <th class="sticky-col">Kỳ quay</th>
+              <th>Ngày mở thưởng</th>
+              <th>Dãy số trúng thưởng</th>
+              <th class="text-center">Tổng điểm</th>
+              <th class="text-center">Chẵn / Lẻ</th>
+              <th class="text-center">Thấp / Cao</th>
+            </tr>
+          </thead>
+          <tbody id="recent-draws-tbody">
+            <tr>
+              <td colspan="6" class="text-center py-6 text-slate-400">
+                <i data-lucide="loader-2" class="w-4 h-4 animate-spin inline-block mr-2 text-slate-400"></i>
+                <span>Đang tải danh sách kỳ mở thưởng...</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-  <div id="bt-result" hidden>
-    <dl class="stats" id="bt-meta"></dl>
-    <p class="verdict" id="bt-headline"></p>
-    <h3>Cumulative difference from random</h3>
-    <p class="muted">Running average of (strategy − random) matches per combination, draw by draw. A real edge would
-      drift away from 0 and stay there; noise wanders and shrinks toward 0 as draws accumulate.
-      <span id="bt-chart-note"></span></p>
-    <div class="chart" id="bt-chart"></div>
-    <h3>Match distribution per combination</h3>
-    <div class="table-wrap"><table class="data" id="bt-table"></table></div>
-    <h3>Compared with the random baseline</h3>
-    <p class="muted">Δ = difference in average matches per combination (strategy − random), paired by draw.
-      p(adj) applies a Bonferroni correction for testing several strategies.</p>
-    <div class="table-wrap"><table class="data" id="bt-compare"></table></div>
-    <ul class="notes muted" id="bt-notes"></ul>
-    <div class="actions"><a class="button" id="bt-csv" href="#" download>Export per-draw CSV</a></div>
+    <!-- Thẻ Tổng quan Kho Dữ liệu đã lưu SQLite -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400">
+            <i data-lucide="server" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Kho Lưu trữ Dữ liệu Kỳ quay SQLite</h3>
+            <p class="text-xs text-slate-500">Cơ sở dữ liệu cục bộ được đồng bộ tự động</p>
+          </div>
+        </div>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Sẵn sàng phân tích</span>
+        </span>
+      </div>
+
+      <!-- 4 Thẻ KPI chính -->
+      <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="data-summary">
+        <div class="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+          <dt class="text-xs font-semibold text-slate-500">Trò chơi hiện tại</dt>
+          <dd data-field="game" class="text-xl font-extrabold text-red-600 dark:text-red-400 my-1">—</dd>
+          <span class="text-[11px] text-slate-400">Thể lệ & luật mở thưởng</span>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+          <dt class="text-xs font-semibold text-slate-500">Tổng số kỳ quay đã lưu</dt>
+          <dd data-field="total_draws" class="text-2xl font-bold font-mono text-slate-900 dark:text-white my-1">—</dd>
+          <span class="text-[11px] text-slate-400">Kỳ mở thưởng lưu trữ</span>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+          <dt class="text-xs font-semibold text-slate-500">Kỳ quay đầu tiên</dt>
+          <dd data-field="first_date" class="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 my-1">—</dd>
+          <span class="text-[11px] text-slate-400">Mốc bắt đầu ghi nhận</span>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+          <dt class="text-xs font-semibold text-slate-500">Kỳ quay gần nhất</dt>
+          <dd data-field="last_date" class="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 my-1">—</dd>
+          <span class="text-[11px] text-slate-400">Dữ liệu cập nhật mới nhất</span>
+        </div>
+      </dl>
+
+      <!-- Thông tin thể lệ -->
+      <div class="mt-4 p-3.5 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl flex items-start gap-3" id="game-info-wrap">
+        <i data-lucide="info" class="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5"></i>
+        <p class="text-xs text-slate-700 dark:text-slate-300 leading-relaxed" id="game-info">Đang tải thể lệ trò chơi...</p>
+      </div>
+
+      <ul class="quality-alert mt-3" id="data-quality" hidden></ul>
+    </div>
+
+    <!-- 2 Thẻ Hướng dẫn Kiến trúc Định lượng & Minh bạch -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Quy trình Định lượng 5 Tầng</h3>
+            <p class="text-[11px] text-slate-500">Xử lý dữ liệu toán học chuẩn mực</p>
+          </div>
+        </div>
+        <div class="space-y-3 text-xs text-slate-600 dark:text-slate-400">
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <p><strong>Đồng bộ & Chuẩn hóa:</strong> Tải tệp JSONL, kiểm định thứ tự ngày mở thưởng, đối chiếu ETag, loại bỏ dữ liệu sai lệch.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <p><strong>Trích xuất Đặc trưng:</strong> Tính toán tần suất lịch sử, phong độ cửa sổ gần W, nhịp vắng mặt (Lô gan), phân bố Chẵn/Lẻ, Thấp/Cao, Tổng điểm.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <p><strong>Thuật toán Chấm điểm:</strong> Chuẩn hóa Z-Score cho từng bóng theo công thức <code>score = max(0.05, 1 + intensity × Σ wᵢ·zᵢ)</code>.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">4</span>
+            <p><strong>Sinh Tổ hợp & Sàng lọc:</strong> Rút số không hoàn lại theo trọng số Gumbel Top-k (bộ sinh PCG64), áp dụng bộ lọc phạt vi phạm quy luật.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">5</span>
+            <p><strong>Kiểm định Tịnh tiến:</strong> Thử nghiệm mù đối đầu với lựa chọn ngẫu nhiên độc lập qua hàng trăm kỳ quá khứ.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Nguyên tắc Khoa học & Minh bạch</h3>
+            <p class="text-[11px] text-slate-500">Loại bỏ ngộ nhận cờ bạc bằng dữ liệu thực</p>
+          </div>
+        </div>
+        <div class="space-y-3.5 text-xs text-slate-600 dark:text-slate-400">
+          <div class="flex items-start gap-3">
+            <i data-lucide="lock" class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-800 dark:text-slate-200">Không dùng dữ liệu tương lai (No Look-Ahead):</strong>
+              <p>Mọi phân tích tại kỳ T chỉ được sử dụng dữ liệu của các kỳ xuất hiện nghiêm ngặt trước kỳ T.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="git-compare" class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-800 dark:text-slate-200">Đối chứng ngẫu nhiên tuyệt đối (Baseline):</strong>
+              <p>Mọi chiến lược đề xuất bắt buộc phải thi đấu với bộ sinh số ngẫu nhiên đều để kiểm tra tính vượt trội thực chất.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="history" class="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-800 dark:text-slate-200">Khả năng tái lập 100% (Reproducibility):</strong>
+              <p>Cùng một hạt giống (Seed) kết hợp dữ liệu gốc và thông số sẽ luôn tạo ra kết quả giống hệt nhau ở mọi máy tính.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="scale" class="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-800 dark:text-slate-200">Kiểm định ý nghĩa thống kê khắt khe:</strong>
+              <p>Áp dụng hiệu chỉnh Bonferroni và khoảng tin cậy 95% để loại bỏ hiện tượng "ngộ nhận quy luật" do ngẫu nhiên.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
   </div>
 
-  <h3>Recent backtests</h3>
-  <div class="table-wrap short">
-    <table class="data" id="bt-runs">
-      <thead><tr><th>ID</th><th>Created (UTC)</th><th>Status</th><th>Period</th><th>Strategies</th><th>Per draw</th><th>Seed</th><th>Draws</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <!-- ================================================================= -->
+  <!-- TAB 2: KHÁM PHÁ THỐNG KÊ (STATISTICS EXPLORER)                    -->
+  <!-- ================================================================= -->
+  <div class="tab-panel space-y-6" id="panel-analysis" role="tabpanel" aria-labelledby="tab-analysis">
+    
+    <!-- Empty state khi chưa chạy phân tích -->
+    <div class="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-10 text-center flex flex-col items-center gap-3" id="analysis-empty-state">
+      <div class="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400">
+        <i data-lucide="line-chart" class="w-7 h-7"></i>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 dark:text-white">Chưa nạp dữ liệu thống kê</h3>
+      <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm">Nhấp vào nút "Phân tích thống kê" để hệ thống tính toán ma trận tần suất, phân bố tổng điểm và chu kỳ nhịp.</p>
+      <button type="button" class="btn btn-primary inline-flex items-center gap-2 mt-1" onclick="document.getElementById('btn-analyze').click()">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        <span>Phân tích dữ liệu ngay</span>
+      </button>
+    </div>
+
+    <!-- Vùng hiển thị kết quả phân tích -->
+    <div class="space-y-6" id="stats-section" hidden>
+      
+      <!-- Thẻ Tiêu đề & KPI Tóm tắt -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-slate-900 dark:text-white">Báo cáo Thống kê Toàn diện</h2>
+              <span class="inline-block mt-0.5 text-xs font-semibold text-blue-600 dark:text-blue-400" id="stats-scope"></span>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span>Đã tính toán xong</span>
+          </span>
+        </div>
+
+        <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" id="stats-summary"></dl>
+      </div>
+
+      <!-- Biểu đồ phân tích tần suất số -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white" id="number-chart-title">Tần suất xuất hiện từng bóng</h3>
+            <p class="text-xs text-slate-500 mt-0.5" id="number-chart-note"></p>
+          </div>
+          <div class="segmented" id="number-metric" role="group" aria-label="Chỉ số theo từng bóng">
+            <button type="button" data-metric="frequency" aria-pressed="true">
+              <span class="btn-dot"></span> Tần suất toàn bộ
+            </button>
+            <button type="button" data-metric="recent" aria-pressed="false">
+              <span class="btn-dot"></span> Phong độ kỳ gần
+            </button>
+            <button type="button" data-metric="gap" aria-pressed="false">
+              <span class="btn-dot"></span> Số kỳ vắng (Lô gan)
+            </button>
+          </div>
+        </div>
+        <div class="chart min-h-[260px]" id="number-chart"></div>
+      </div>
+
+      <!-- Lưới 3 biểu đồ phân bố -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Phân bố Tổng điểm</h3>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Histogram</span>
+            </div>
+            <p class="text-[11px] text-slate-500 leading-tight mb-2" id="sum-chart-note"></p>
+          </div>
+          <div class="chart min-h-[220px]" id="sum-chart"></div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Tỷ lệ Chẵn / Lẻ</h3>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Odd / Even</span>
+            </div>
+            <p class="text-[11px] text-slate-500 leading-tight mb-2">Tỷ lệ số kỳ thực tế so với kỳ vọng ngẫu nhiên đều</p>
+          </div>
+          <div class="chart min-h-[220px]" id="odd-chart"></div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Tỷ lệ Thấp / Cao</h3>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Tài / Xỉu</span>
+            </div>
+            <p class="text-[11px] text-slate-500 leading-tight mb-2">Tỷ lệ các bóng thuộc nửa số Thấp so với nửa số Cao</p>
+          </div>
+          <div class="chart min-h-[220px]" id="low-chart"></div>
+        </div>
+      </div>
+
+      <!-- Bảng ma trận chi tiết toàn bộ các bóng -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+        <div class="mb-3">
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">Ma trận Thống kê Chi tiết Từng Bóng Số</h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Nhấp vào tiêu đề cột để sắp xếp. <strong>Kỳ vắng</strong> = số kỳ chưa về; <strong>Chu kỳ TB</strong> = số kỳ trung bình giữa các lần về (kỳ vọng: <span id="expected-gap" class="font-bold text-slate-700 dark:text-slate-300"></span> kỳ).
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table class="modern-table sortable" id="numbers-table">
+            <thead>
+              <tr>
+                <th data-sort="number">Bóng</th>
+                <th data-sort="frequency">Tần suất</th>
+                <th data-sort="frequency_rate">Tỷ lệ %</th>
+                <th data-sort="recent_10">Về 10 kỳ</th>
+                <th data-sort="recent_20">Về 20 kỳ</th>
+                <th data-sort="recent_50">Về 50 kỳ</th>
+                <th data-sort="recent_w" id="recent-w-head">Kỳ gần W</th>
+                <th data-sort="gap">Kỳ vắng</th>
+                <th data-sort="average_gap">Chu kỳ TB</th>
+                <th data-sort="gap_deviation">Độ lệch nhịp</th>
+                <th data-sort="temperature_ratio">Nhiệt độ</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Lưới các bảng phân bố quy luật tổ hợp -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Chi tiết Tỷ lệ Chẵn / Lẻ mỗi kỳ</h3>
+          <table class="modern-table" id="odd-even-table"></table>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Chi tiết Tỷ lệ Thấp / Cao (Tài / Xỉu)</h3>
+          <table class="modern-table" id="low-high-table"></table>
+          <p class="text-[11px] text-slate-500 mt-2" id="low-high-ranges"></p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Thống kê Tham số Tổng điểm</h3>
+          <table class="modern-table" id="sum-table"></table>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm" id="pairs-block">
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1">Top Cặp số Hay Đi Cùng Nhau</h3>
+          <p class="text-[11px] text-slate-500 mb-2" id="pairs-note"></p>
+          <table class="modern-table" id="pairs-table"></table>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm" id="triples-block" hidden>
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1">Top Bộ Ba Cùng Về Trong Một Kỳ</h3>
+          <p class="text-[11px] text-slate-500 mb-2" id="triples-note"></p>
+          <table class="modern-table" id="triples-table"></table>
+        </div>
+      </div>
+
+    </div>
+
   </div>
-</section>
+
+  <!-- ================================================================= -->
+  <!-- TAB 3: CHIẾN LƯỢC & SINH SỐ DỰ THƯỞNG                             -->
+  <!-- ================================================================= -->
+  <div class="tab-panel space-y-6" id="panel-generation" role="tabpanel" aria-labelledby="tab-generation">
+    
+    <!-- BANNER GIẢI THÍCH NGUYÊN LÝ THUẬT TOÁN: KHÔNG PHẢI RANDOM ĐỒNG NHẤT -->
+    <div class="rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-500/20 text-slate-800 dark:text-slate-200">
+      <div class="flex items-start gap-3.5">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-500/30">
+          <i data-lucide="info" class="w-5 h-5"></i>
+        </div>
+        <div class="space-y-1.5 text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+              Cơ chế Thuật toán: Thống kê Đa biến & Lấy mẫu Trọng số Gumbel Top-k
+            </h3>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              Không phải ngẫu nhiên đều 1/45 hay 1/55
+            </span>
+          </div>
+          <p class="text-slate-600 dark:text-slate-300 leading-relaxed">
+            Thuật toán <strong>hoàn toàn dựa trên toán học thống kê</strong>: Điểm số của từng quả bóng được tổng hợp từ <strong>5 đặc trưng thống kê</strong> (tần suất lịch sử, phong độ cửa sổ gần W, độ trễ nhịp lô gan, cặp số tương quan đồng xuất hiện, độ ổn định Z-Score). Sau đó thực hiện <em>lấy mẫu ngẫu nhiên có trọng số không hoàn lại (Gumbel Top-k)</em> và kiểm định qua bộ lọc tổ hợp thực tế (loại bỏ trường hợp dị biệt như 6 chẵn, 6 lẻ, hay tổng vượt ngoài phân vị 5% - 95%).
+          </p>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <span class="inline-flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i> Bóng có điểm thống kê cao hơn = Tỷ lệ được chọn vào vé cao hơn tương ứng</span>
+            <span class="inline-flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i> Đa dạng hóa bộ số (nếu cố định chọn 6 số cao nhất thì mọi vé sinh ra sẽ giống hệt nhau)</span>
+            <span class="inline-flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i> Bộ lọc quy luật loại trừ các tổ hợp bất thường không thực tế</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Khung Cấu hình Chiến lược & Tham số sinh số -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div class="flex items-center gap-3 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/50 flex items-center justify-center text-purple-600 dark:text-purple-400">
+          <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-slate-900 dark:text-white">Cấu hình Chiến lược & Bộ lọc Quy luật Tổ hợp</h2>
+          <p class="text-xs text-slate-500">Tùy biến trọng số thuật toán để sinh ra danh sách các bộ số may mắn tối ưu</p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Hàng 1: Chiến lược, Số lượng vé, Seed -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label for="strategy" class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="brain" class="w-4 h-4 text-purple-500"></i>
+              <span>Chiến lược chấm điểm</span>
+            </label>
+            <div class="relative">
+              <select name="strategy" id="strategy" class="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2.5 pr-10 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer">
+                {% for key, label in strategies %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label for="count" class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="ticket" class="w-4 h-4 text-blue-500"></i>
+              <span>Số lượng vé cần sinh</span>
+            </label>
+            <input type="number" name="count" id="count" value="100" min="1" max="1000" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all">
+            <div class="flex items-center gap-1.5 pt-0.5">
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('count').value=10">10 vé</button>
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('count').value=50">50 vé</button>
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('count').value=100">100 vé</button>
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('count').value=200">200 vé</button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label for="seed" class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5" title="Cùng seed + cùng cài đặt = sinh ra bộ số giống hệt nhau">
+              <i data-lucide="sprout" class="w-4 h-4 text-emerald-500"></i>
+              <span>Hạt giống (Seed)</span>
+            </label>
+            <input type="number" id="seed" min="0" placeholder="Ngẫu nhiên (Để trống)" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono">
+            <div class="flex items-center gap-1.5 pt-0.5">
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('seed').value=Math.floor(Math.random()*9000000+1000000)">🎲 Ngẫu nhiên</button>
+              <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('seed').value=''">Xóa trống</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trọng số thuật toán -->
+        <fieldset class="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/70 dark:bg-slate-950/40" id="weights">
+          <legend class="px-2 text-xs font-bold text-slate-800 dark:text-slate-200 inline-flex items-center gap-1.5">
+            <i data-lucide="scale" class="w-3.5 h-3.5 text-blue-500"></i>
+            <span>Trọng số thuật toán chấm điểm</span>
+            <span class="text-[11px] font-normal text-slate-400" id="weights-note">(Chuẩn hóa tổng = 1.0)</span>
+          </legend>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-2">
+            {% for key, label in weight_fields %}
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-semibold text-slate-500 truncate" title="{{ label }}">{{ label }}</span>
+              <input type="number" data-weight="{{ key }}" min="0" max="10" step="0.05" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none">
+            </div>
+            {% endfor %}
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-semibold text-slate-500" title="Cường độ tác động">Cường độ</span>
+              <input type="number" id="intensity" min="0" max="5" step="0.05" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none">
+            </div>
+            <div class="flex flex-col gap-1 col-span-2 sm:col-span-1">
+              <span class="text-[11px] font-semibold text-slate-500">Nhịp lô (Gap)</span>
+              <select id="gap-mode" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none">
+                <option value="overdue">Bắt số gan (vắng dài ↑)</option>
+                <option value="recency">Bắt số rơi (vắng ngắn ↑)</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Bộ lọc quy luật tổ hợp -->
+        <fieldset class="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/70 dark:bg-slate-950/40" id="rules">
+          <legend class="px-2 text-xs font-bold text-slate-800 dark:text-slate-200 inline-flex items-center gap-1.5">
+            <i data-lucide="filter" class="w-3.5 h-3.5 text-emerald-500"></i>
+            <span>Bộ lọc quy luật tổ hợp</span>
+            <span class="text-[11px] font-normal text-slate-400">(Điểm phạt tổ hợp vi phạm)</span>
+          </legend>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 mt-2 items-center">
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" id="rule-odd" checked class="w-4 h-4 rounded text-blue-600">
+              <span>Phạt toàn Chẵn/Lẻ</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" id="rule-low" checked class="w-4 h-4 rounded text-blue-600">
+              <span>Phạt toàn Thấp/Cao</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Độ giãn %:</span>
+              <input type="number" id="rule-spread" value="30" min="0" max="100" step="5" class="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-semibold">
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Tổng P-min:</span>
+              <input type="number" id="rule-sum-lo" value="5" min="0" max="99" class="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-semibold">
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Tổng P-max:</span>
+              <input type="number" id="rule-sum-hi" value="95" min="1" max="100" class="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-semibold">
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title="Sàng lọc nhiều ứng viên">Oversample ×:</span>
+              <input type="number" id="rule-oversample" value="1" min="1" max="20" class="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs font-semibold">
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Nút sinh số nổi bật -->
+        <div class="flex justify-end pt-2">
+          <button type="button" id="btn-generate" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition-all cursor-pointer active:scale-95">
+            <i data-lucide="target" class="w-4 h-4"></i>
+            <span>Bắt đầu Sinh bộ số dự thưởng ngay</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kết quả các bộ số đã sinh -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4" id="combos-section" hidden>
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <i data-lucide="award" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Danh sách Bộ số Dự thưởng Đã Sinh</h2>
+            <p class="text-xs text-slate-500">Các vé được tính điểm tổng hợp theo trọng số thuật toán</p>
+          </div>
+        </div>
+      </div>
+
+      <dl class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="combos-meta"></dl>
+
+      <!-- Thanh công cụ vé -->
+      <div class="flex flex-wrap items-center gap-2 py-1">
+        <button type="button" id="btn-again" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 transition-colors">
+          <i data-lucide="shuffle" class="w-3.5 h-3.5"></i>
+          <span>Sinh lại (Hạt giống mới)</span>
+        </button>
+        <div class="inline-flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-xs">
+          <span class="text-slate-400">Seed:</span>
+          <input type="number" id="seed-change" min="0" class="w-20 bg-transparent border-0 font-mono text-xs font-bold p-0 focus:ring-0 outline-none">
+          <button type="button" id="btn-seed" class="text-blue-600 font-bold hover:underline cursor-pointer">Áp dụng</button>
+        </div>
+        <a class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 transition-colors" id="btn-csv" href="#" download>
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Xuất CSV</span>
+        </a>
+        <button type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 transition-colors" id="btn-reproduce">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          <span>Xác minh tái lập</span>
+        </button>
+      </div>
+
+      <p class="status text-xs font-semibold m-0" id="combos-status" role="status"></p>
+
+      <div class="table-wrap">
+        <table class="modern-table combos-table" id="combos-table">
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Bộ 6 số may mắn</th>
+              <th title="Tổng điểm các bóng">Điểm bóng</th>
+              <th title="Đóng góp cặp số">Điểm cặp</th>
+              <th title="Phạt chẵn/lẻ, thấp/cao hoặc độ giãn">Phạt phân bố</th>
+              <th title="Phạt tổng điểm">Phạt tổng</th>
+              <th title="Điểm tổng hợp cuối">Điểm tổng</th>
+              <th>Cảnh báo</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <ul class="text-xs text-slate-500 list-disc list-inside space-y-1" id="combos-notes"></ul>
+
+      <!-- Lịch sử các phiên sinh số -->
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+        <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Lịch sử các phiên sinh số gần đây</h3>
+        <div class="table-wrap short">
+          <table class="modern-table" id="sessions-table">
+            <thead>
+              <tr>
+                <th>Mã phiên</th>
+                <th>Thời điểm tạo (UTC)</th>
+                <th>Chiến lược</th>
+                <th>Hạt giống</th>
+                <th>Số bộ</th>
+                <th>Khoảng ngày</th>
+                <th>Bản vân dữ liệu</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bảng Xếp hạng Điểm số & Khung Bóc tách Z-Score -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4" id="scores-section" hidden>
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <i data-lucide="trophy" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Bảng Xếp Hạng & Bóc Tách Điểm Số Từng Bóng</h2>
+            <span class="text-xs font-semibold text-blue-600 dark:text-blue-400" id="scores-scope"></span>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-500">
+        Điểm số là trọng số lấy mẫu tương đối: <strong>1.000 là mức chuẩn trung hòa</strong>; điểm &gt; 1.000 nghĩa là thuật toán ưu tiên bóng đó hơn. Nhấp vào bất kỳ dòng nào để bóc tách thành phần điểm ở khung bên phải.
+      </p>
+
+      <div class="chart min-h-[220px]" id="score-chart"></div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div class="lg:col-span-7 table-wrap">
+          <table class="modern-table sortable" id="scores-table">
+            <thead>
+              <tr>
+                <th data-sort="number">Bóng</th>
+                <th data-sort="frequency">Tần suất</th>
+                <th data-sort="recent" id="scores-recent-head">Kỳ gần W</th>
+                <th data-sort="gap">Kỳ vắng</th>
+                <th data-sort="score">Điểm số</th>
+                <th data-sort="rank">Xếp hạng</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <aside class="lg:col-span-5 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sticky top-20" id="breakdown">
+          <p class="text-xs text-slate-400">Chọn một số trong bảng để xem chi tiết bóc tách thành phần điểm.</p>
+        </aside>
+      </div>
+
+      <ul class="text-xs text-slate-500 list-disc list-inside space-y-1 mt-2" id="scores-notes"></ul>
+      <details class="text-xs text-slate-500">
+        <summary class="cursor-pointer font-semibold hover:text-slate-800 dark:hover:text-slate-200">Tham số kỹ thuật tái lập</summary>
+        <pre class="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg mt-2 overflow-x-auto font-mono text-[11px]" id="scores-params"></pre>
+      </details>
+    </div>
+
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- TAB 4: KIỂM ĐỊNH BACKTEST (WALK-FORWARD LAB)                      -->
+  <!-- ================================================================= -->
+  <div class="tab-panel space-y-6" id="panel-backtest" role="tabpanel" aria-labelledby="tab-backtest">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5" id="backtest-section">
+      
+      <div class="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div class="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/50 flex items-center justify-center text-rose-600 dark:text-rose-400">
+          <i data-lucide="flask-conical" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-slate-900 dark:text-white">Kiểm định Tịnh tiến Khoa học (Walk-Forward Backtesting)</h2>
+          <p class="text-xs text-slate-500">Mỗi kỳ quay quá khứ chỉ sử dụng dữ liệu trước nó để sinh số, rồi đối chiếu trực tiếp với kết quả thực tế</p>
+        </div>
+      </div>
+
+      <form class="bt-form space-y-4" onsubmit="return false">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Kiểm định từ ngày</span>
+            <input type="date" id="bt-from" value="2022-01-01" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold">
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Đến ngày</span>
+            <input type="date" id="bt-to" value="{{ default_end }}" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold">
+          </div>
+          <div class="col-span-1 sm:col-span-2 flex items-center gap-1.5 flex-wrap">
+            <span class="text-[11px] font-semibold text-slate-400">Giai đoạn:</span>
+            <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('bt-from').value='2025-01-01'">1 năm gần đây</button>
+            <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('bt-from').value='2024-01-01'">2 năm gần đây</button>
+            <button type="button" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer" onclick="document.getElementById('bt-from').value='2022-01-01'">Từ 2022</button>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400" title="Để trống nếu muốn dùng toàn bộ">Dữ liệu học từ ngày</span>
+            <input type="date" id="bt-train-from" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold">
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Số vé sinh mỗi kỳ</span>
+            <input type="number" id="bt-per-draw" value="100" min="1" max="1000" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold">
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400" title="Bỏ qua kỳ có ít hơn N kỳ lịch sử">Lịch sử tối thiểu (kỳ)</span>
+            <input type="number" id="bt-min-history" value="100" min="10" max="5000" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold">
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400" title="Đánh giá mỗi N kỳ quay">Bước nhảy (Step)</span>
+            <input type="number" id="bt-step" value="1" min="1" max="100" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold">
+          </div>
+          <div class="flex flex-col gap-1 sm:col-span-2">
+            <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Hạt giống cơ sở (Seed)</span>
+            <input type="number" id="bt-seed" value="20240101" min="0" class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold font-mono">
+          </div>
+        </div>
+
+        <!-- Checkbox các chiến lược -->
+        <fieldset class="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/70 dark:bg-slate-950/40">
+          <legend class="px-2 text-xs font-bold text-slate-800 dark:text-slate-200 inline-flex items-center gap-1.5">
+            <i data-lucide="swords" class="w-3.5 h-3.5 text-rose-500"></i>
+            <span>Các chiến lược tham gia thi đấu đối đầu</span>
+            <span class="text-[11px] font-normal text-slate-400">(Chiến lược ngẫu nhiên đối chứng luôn được bao gồm)</span>
+          </legend>
+          <div class="flex flex-wrap gap-4 mt-2">
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" data-bt-strategy="frequency" checked class="w-4 h-4 rounded text-blue-600">
+              <span>Ưu tiên tần suất cao (Frequency)</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" data-bt-strategy="recent" checked class="w-4 h-4 rounded text-blue-600">
+              <span>Ưu tiên phong độ gần (Recent)</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" data-bt-strategy="balanced" checked class="w-4 h-4 rounded text-blue-600">
+              <span>Cân bằng tổng hợp (Balanced)</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" id="bt-custom" class="w-4 h-4 rounded text-blue-600">
+              <span>Tùy biến (Theo trọng số cấu hình ở trên)</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="flex justify-end">
+          <button type="button" id="btn-backtest" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30 transition-all cursor-pointer active:scale-95">
+            <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+            <span>Chạy kiểm định mô hình ngay</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Thanh tiến trình kiểm định -->
+      <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden" id="bt-progress" hidden>
+        <div class="bg-gradient-to-r from-blue-600 to-cyan-400 h-2 rounded-full transition-all duration-300" id="bt-progress-bar" style="width: 0%"></div>
+      </div>
+      <p class="status text-xs font-semibold text-slate-600 dark:text-slate-400 m-0" id="bt-status" role="status"></p>
+
+      <!-- KẾT QUẢ KIỂM ĐỊNH -->
+      <div class="space-y-5 pt-3 border-t border-slate-100 dark:border-slate-800" id="bt-result" hidden>
+        <dl class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="bt-meta"></dl>
+
+        <div class="p-4 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl flex items-start gap-3" id="bt-verdict-box">
+          <i data-lucide="scale" class="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"></i>
+          <div>
+            <strong class="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wide">Nhận định Định lượng:</strong>
+            <p class="text-xs text-slate-700 dark:text-slate-300 mt-0.5 leading-relaxed" id="bt-headline"></p>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">Chênh lệch tích lũy so với Lựa chọn Ngẫu nhiên (Cumulative Alpha)</h3>
+          <p class="text-xs text-slate-500 mt-0.5 mb-2">
+            Đường trung bình tích lũy của (Chiến lược − Ngẫu nhiên) số bóng trúng trên mỗi vé qua từng kỳ.
+            <span id="bt-chart-note"></span>
+          </p>
+          <div class="chart min-h-[240px]" id="bt-chart"></div>
+        </div>
+
+        <div>
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1">Phân bố Tỷ lệ Trúng số trên mỗi Vé</h3>
+          <div class="table-wrap">
+            <table class="modern-table" id="bt-table"></table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1">So sánh Đối đầu với Chiến lược Ngẫu nhiên</h3>
+          <div class="table-wrap">
+            <table class="modern-table" id="bt-compare"></table>
+          </div>
+        </div>
+
+        <ul class="text-xs text-slate-500 list-disc list-inside space-y-1" id="bt-notes"></ul>
+
+        <div class="flex justify-end">
+          <a class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-blue-400 transition-colors" id="bt-csv" href="#" download>
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Xuất dữ liệu chi tiết từng kỳ (CSV)</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Lịch sử các lần chạy Backtest -->
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+        <h3 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">Lịch sử các lần chạy kiểm định gần đây</h3>
+        <div class="table-wrap short">
+          <table class="modern-table" id="bt-runs">
+            <thead>
+              <tr>
+                <th>Mã lần chạy</th>
+                <th>Thời điểm tạo (UTC)</th>
+                <th>Trạng thái</th>
+                <th>Giai đoạn</th>
+                <th>Các chiến lược</th>
+                <th>Số vé/kỳ</th>
+                <th>Hạt giống</th>
+                <th>Số kỳ</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
 {% endblock %}
 
 {% block scripts %}
-{# Plain scripts sharing one global scope, loaded in dependency order; main.js wires events. #}
+{# Nạp các tệp script theo đúng thứ tự phụ thuộc #}
 {% for name in ["charts.js", "core.js", "analysis.js", "dashboard-charts.js", "scoring.js", "generation.js", "backtest.js", "main.js"] %}
 <script src="{{ url_for('static', path=name) }}"></script>
 {% endfor %}

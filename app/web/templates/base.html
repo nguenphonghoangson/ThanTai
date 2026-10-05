@@ -1,25 +1,139 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi" data-theme="light" class="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Vietlott Analyzer{% endblock %}</title>
+  <title>{% block title %}THẦN TÀI - Hệ thống Phân tích Thống kê & Dự thưởng Vietlott (Vietlott Analyzer){% endblock %}</title>
+  <meta name="description" content="Phân tích định lượng dữ liệu kỳ quay lịch sử và tạo bộ số dự thưởng theo trọng số thống kê cho Mega 6/45 và Power 6/55">
+  
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              red: '#e11b22',
+              hover: '#c41219',
+              light: '#fee2e2',
+              dark: '#991b1b',
+            },
+            slate: {
+              750: '#263345',
+              850: '#172030',
+              950: '#0b0f17',
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Custom Styles: 3D Lottery Balls, SVG Charts & Micro-interactions -->
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  
+  <script>
+    // Khởi tạo theme mặc định là sáng (light) để bảng số liệu luôn rõ ràng, dễ nhìn
+    (function() {
+      const savedTheme = localStorage.getItem("vietlott_theme");
+      const theme = savedTheme || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+      if (theme === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+      } else {
+        document.documentElement.classList.add("light");
+        document.documentElement.classList.remove("dark");
+      }
+    })();
+  </script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="wrap">
-      <h1>Vietlott Analyzer</h1>
-      <p class="tagline">Historical draw analysis and statistically weighted candidate generation</p>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans min-h-screen flex flex-col antialiased transition-colors duration-150">
+  
+  <!-- TOPBAR HEADER -->
+  <header class="bg-white/85 dark:bg-slate-900/85 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 backdrop-blur-md transition-colors duration-150">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo & Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 via-red-600 to-rose-700 flex items-center justify-center text-white shadow-md shadow-red-500/25 ring-1 ring-amber-400/40 flex-shrink-0">
+          <i data-lucide="sparkles" class="w-5 h-5 text-amber-100"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 dark:from-red-400 dark:via-rose-400 dark:to-amber-400 bg-clip-text text-transparent">THẦN TÀI</span>
+              <span class="text-xs font-bold text-slate-400 dark:text-slate-500 font-mono tracking-normal">Vietlott</span>
+            </h1>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60 shadow-xs">
+              AI Định Lượng
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
+            Trợ lý phân tích thống kê kỳ quay & sinh số dự thưởng Vietlott thông minh
+          </p>
+        </div>
+      </div>
+
+      <!-- Topbar Quick Status & Theme Switcher -->
+      <div class="flex items-center gap-3">
+        <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 shadow-sm" id="dataset-status-pill">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="top-dataset-text">Đang kết nối cơ sở dữ liệu...</span>
+        </div>
+
+        <button type="button" id="theme-toggle" class="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer" aria-label="Chuyển đổi giao diện sáng/tối" title="Chuyển chế độ Giao diện">
+          <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
+          <i data-lucide="moon" class="w-4 h-4 block dark:hidden text-slate-700"></i>
+        </button>
+      </div>
+
     </div>
   </header>
-  <main class="wrap">
+
+  <!-- MAIN WORKSPACE -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
     {% block content %}{% endblock %}
   </main>
-  <footer class="wrap footer">
-    Lottery draws are independent random events. Scores here describe past data only;
-    they are not probabilities and do not predict future results.
+
+  <!-- FOOTER & COMPLIANCE -->
+  <footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8 transition-colors duration-150">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6">
+      
+      <!-- Scientific Disclaimer -->
+      <div class="bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed shadow-sm">
+        <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold mb-1.5 text-xs sm:text-sm">
+          <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0"></i>
+          <span>Nguyên tắc Xác suất & Tuyên bố Trách nhiệm:</span>
+        </div>
+        <p>
+          Các kỳ quay thưởng xổ số điện toán là những biến cố ngẫu nhiên hoàn toàn độc lập. Mọi dữ liệu phân tích, điểm số thuật toán và kết quả sinh số tại hệ thống này chỉ mô tả các mẫu số trong lịch sử quá khứ; <strong>chúng không cấu thành xác suất toán học cho kỳ tương lai và không thể dự đoán hoặc bảo đảm cơ hội trúng giải</strong>. Mọi chiến lược đều được kiểm định đối đầu trực tiếp với lựa chọn ngẫu nhiên để đảm bảo tính khách quan khoa học. Vui lòng tham gia dự thưởng có trách nhiệm và trong tầm kiểm soát tài chính.
+        </p>
+      </div>
+
+      <!-- Copyright -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+        <p>© 2026 THẦN TÀI (Vietlott Analyzer) • Trợ lý Thống kê & Dự thưởng Chuẩn Xác Suất Chuyên Nghiệp.</p>
+        <p>Hỗ trợ đầy đủ Mega 6/45 và Power 6/55 • Dữ liệu cập nhật tự động sau mỗi kỳ quay thưởng lúc 18h30.</p>
+      </div>
+
+    </div>
   </footer>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,7 +1,14 @@
 "use strict";
-// Statistics section: feature tables.
-let analysis = null; // last /api/analysis/features response
+// Phân hệ Thống kê: kết xuất các bảng ma trận đặc trưng (Features).
+let analysis = null; // lưu trữ phản hồi /api/analysis/features gần nhất
 let numberSort = { key: "number", dir: 1 };
+
+const TEMP_LABELS = {
+  HOT: "Cực nóng 🔥",
+  WARM: "Ấm ⚡",
+  COLD: "Lô gan ❄️",
+  NORMAL: "Bình thường ⚪",
+};
 
 function numberRows() {
   const w = analysis.features.config.hot_cold_window;
@@ -22,24 +29,28 @@ function renderNumbers() {
     return (av < bv ? -1 : av > bv ? 1 : 0) * dir || a.number - b.number;
   });
   const body = $("#numbers-table tbody");
+  if (!body) return;
   body.replaceChildren(
-    ...rows.map((n) =>
-      el("tr", {}, [
-        el("td", {}, pad2(n.number)),
-        el("td", {}, n.frequency),
-        el("td", {}, fmt(n.frequency_rate, 3)),
+    ...rows.map((n) => {
+      const ballColorIndex = Math.min(5, Math.floor(n.number / 10));
+      return el("tr", {}, [
+        el("td", { className: "col-num-cell" }, [
+          el("span", { className: `ball mini-ball ball-${ballColorIndex}` }, pad2(n.number)),
+        ]),
+        el("td", { className: "cell-bold" }, n.frequency),
+        el("td", {}, `${(n.frequency_rate * 100).toFixed(1)}%`),
         el("td", {}, n.recent_10),
         el("td", {}, n.recent_20),
         el("td", {}, n.recent_50),
-        el("td", {}, n.recent_w),
-        el("td", {}, n.seen ? n.gap : `${n.gap}+`),
+        el("td", { className: "cell-highlight" }, n.recent_w),
+        el("td", { className: n.gap >= 15 ? "cell-warning" : "" }, n.seen ? n.gap : `${n.gap}+`),
         el("td", {}, fmt(n.average_gap)),
         el("td", {}, fmt(n.gap_deviation)),
-        el("td", { title: `observed/expected = ${fmt(n.temperature_ratio)}` }, [
-          el("span", { className: `temp temp-${n.temperature}` }, n.temperature),
+        el("td", { title: `Tỷ lệ thực tế / Kỳ vọng lý thuyết = ${fmt(n.temperature_ratio)}` }, [
+          el("span", { className: `temp temp-${n.temperature}` }, TEMP_LABELS[n.temperature] || n.temperature),
         ]),
-      ]),
-    ),
+      ]);
+    }),
   );
   for (const th of $("#numbers-table").querySelectorAll("th")) {
     th.setAttribute("aria-sort", th.dataset.sort === key ? (dir > 0 ? "ascending" : "descending") : "none");
@@ -48,7 +59,7 @@ function renderNumbers() {
 
 function barCell(observed, expected, scale) {
   return el("td", {}, [
-    el("div", { className: "bars", title: `observed ${fmt(observed, 1)}%, expected ${fmt(expected, 1)}%` }, [
+    el("div", { className: "bars", title: `Thực tế: ${fmt(observed, 1)}%, Lý thuyết: ${fmt(expected, 1)}%` }, [
       el("span", { className: "bar", style: `width:${(observed / scale) * 100}%` }),
       el("span", { className: "bar expected", style: `width:${(expected / scale) * 100}%` }),
     ]),
@@ -56,19 +67,20 @@ function barCell(observed, expected, scale) {
 }
 
 function renderCountDistribution(table, dist, a, b) {
+  if (!table) return;
   const k = dist.counts.length - 1;
   const scale = Math.max(...dist.observed_pct, ...dist.expected_pct);
   table.replaceChildren(
-    el("thead", {}, el("tr", {}, ["Split", "Draws", "Observed", "Expected", ""].map((h) => el("th", {}, h)))),
+    el("thead", {}, el("tr", {}, ["Phân chia", "Số kỳ về", "Tỷ lệ thực tế", "Kỳ vọng lý thuyết", "Trực quan"].map((h) => el("th", {}, h)))),
     el(
       "tbody",
       {},
       dist.counts.map((c, x) =>
         el("tr", {}, [
-          el("td", {}, `${x} ${a} / ${k - x} ${b}`),
+          el("td", { className: "cell-bold" }, `${x} ${a} / ${k - x} ${b}`),
           el("td", {}, c),
-          el("td", {}, `${fmt(dist.observed_pct[x], 1)}%`),
-          el("td", {}, `${fmt(dist.expected_pct[x], 1)}%`),
+          el("td", { className: "cell-highlight" }, `${fmt(dist.observed_pct[x], 1)}%`),
+          el("td", { className: "text-muted" }, `${fmt(dist.expected_pct[x], 1)}%`),
           barCell(dist.observed_pct[x], dist.expected_pct[x], scale),
         ]),
       ),
@@ -78,29 +90,39 @@ function renderCountDistribution(table, dist, a, b) {
 
 function renderSums(s) {
   const rows = [
-    ["Min / max", `${s.min} / ${s.max}`],
-    ["Mean", `${fmt(s.mean, 1)} (theoretical ${fmt(s.theoretical_mean, 1)})`],
-    ["Median", fmt(s.median, 0)],
-    ["Std deviation", fmt(s.std, 1)],
-    ...Object.entries(s.percentiles).map(([p, v]) => [`P${p}`, fmt(v, 0)]),
+    ["Nhỏ nhất / Lớn nhất", `${s.min} / ${s.max}`],
+    ["Tổng điểm trung bình", `${fmt(s.mean, 1)} (Lý thuyết: ${fmt(s.theoretical_mean, 1)})`],
+    ["Trung vị (Median)", fmt(s.median, 0)],
+    ["Độ lệch chuẩn (Std Dev)", fmt(s.std, 1)],
+    ...Object.entries(s.percentiles).map(([p, v]) => [`Bách phân vị P${p}`, fmt(v, 0)]),
   ];
-  $("#sum-table").replaceChildren(el("tbody", {}, rows.map(([k, v]) => el("tr", {}, [el("td", {}, k), el("td", {}, v)]))));
+  const sumTable = $("#sum-table");
+  if (sumTable) {
+    sumTable.replaceChildren(el("tbody", {}, rows.map(([k, v]) => el("tr", {}, [el("td", { className: "cell-bold" }, k), el("td", {}, v)]))));
+  }
 }
 
 function renderCombos(block, table, note, combos) {
+  if (!block) return;
   block.hidden = !combos;
-  if (!combos) return;
-  note.textContent = `Expected ${fmt(combos.expected_count)} occurrences each under uniform random draws. ${combos.note}`;
+  if (!combos || !table) return;
+  if (note) {
+    note.textContent = `Kỳ vọng lý thuyết mỗi tổ hợp xuất hiện khoảng ${fmt(combos.expected_count)} lần theo phân bố đều ngẫu nhiên. ${combos.note}`;
+  }
   table.replaceChildren(
-    el("thead", {}, el("tr", {}, ["Numbers", "Count", "vs expected"].map((h) => el("th", {}, h)))),
+    el("thead", {}, el("tr", {}, ["Bộ số", "Số lần cùng về", "Tỷ lệ so với kỳ vọng"].map((h) => el("th", {}, h)))),
     el(
       "tbody",
       {},
       combos.top.map((c) =>
         el("tr", {}, [
-          el("td", {}, c.numbers.map(pad2).join(" – ")),
-          el("td", {}, c.count),
-          el("td", {}, `×${fmt(c.count / combos.expected_count)}`),
+          el("td", { className: "col-combo-tokens" }, [
+            el("span", { className: "balls mini-balls" }, c.numbers.map((n) =>
+              el("span", { className: `ball mini-ball ball-${Math.min(5, Math.floor(n / 10))}` }, pad2(n))
+            ))
+          ]),
+          el("td", { className: "cell-bold" }, `${c.count} kỳ`),
+          el("td", { className: "cell-highlight" }, `×${fmt(c.count / combos.expected_count)} lần`),
         ]),
       ),
     ),
@@ -111,7 +133,7 @@ function onSortClick(event) {
   const th = event.target.closest("th[data-sort]");
   if (!th || !analysis) return;
   const key = th.dataset.sort;
-  // Numeric columns default to descending (largest first) on first click; Number ascending.
+  // Cột số sắp xếp tăng dần mặc định; các cột chỉ số sắp xếp giảm dần trước
   numberSort = numberSort.key === key ? { key, dir: -numberSort.dir } : { key, dir: key === "number" ? 1 : -1 };
   renderNumbers();
 }

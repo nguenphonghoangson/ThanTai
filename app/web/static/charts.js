@@ -133,7 +133,7 @@ const Charts = (() => {
     const barW = Math.max(1, Math.min(24, (band - 2 - groupGap) / series.length - (series.length > 1 ? 2 : 0)));
     const groupW = barW * series.length + (series.length - 1) * 2;
     const r = Math.min(4, barW / 2);
-    const colors = series.map((s) => cssVar(container, s.colorVar));
+    const colors = series.map((s) => cssVar(container, s.colorVar) || (s.colorVar === "--series-1" ? "#3b82f6" : "#94a3b8"));
 
     // x labels
     const every = opts.labelEvery || Math.max(1, Math.ceil(categories.length / Math.floor(plotW / 28)));
@@ -157,7 +157,7 @@ const Charts = (() => {
         svg.append(svgEl("path", { d, fill: colors[si], class: "chart-bar" }));
       });
       // Hit target: the whole band, taller than the mark.
-      const hit = svgEl("rect", { x: PAD.left + band * i, y: PAD.top, width: band, height: plotH, class: "chart-hit", tabindex: 0 });
+      const hit = svgEl("rect", { x: PAD.left + band * i, y: PAD.top, width: band, height: plotH, fill: "transparent", class: "chart-hit", tabindex: 0 });
       const rows = () => [
         ...series.map((s, si) => ({ label: s.label, value: fmt2(s.values[i], opts.valueFormat || fmt), color: colors[si] })),
         ...(opts.tipExtra ? opts.tipExtra(i) : []),
@@ -230,7 +230,7 @@ const Charts = (() => {
     // Crosshair layer
     const cross = svgEl("line", { y1: PAD.top, y2: PAD.top + plotH, class: "chart-cross", visibility: "hidden" });
     svg.append(cross);
-    const layer = svgEl("rect", { x: PAD.left, y: PAD.top, width: plotW, height: plotH, class: "chart-hit", tabindex: 0 });
+    const layer = svgEl("rect", { x: PAD.left, y: PAD.top, width: plotW, height: plotH, fill: "transparent", class: "chart-hit", tabindex: 0 });
     const at = (evt) => {
       const box = svg.getBoundingClientRect();
       const px = ((evt.clientX - box.left) / box.width) * width;
